@@ -55,6 +55,8 @@
 #include "backing_store_tuner.h"
 #include "sunxi_video.h"
 
+#include "raspi_hwcursor.h"
+
 #ifdef HAVE_LIBUMP
 #include "sunxi_mali_ump_dri2.h"
 #endif
@@ -241,7 +243,7 @@ FBDevGetRec(ScrnInfoPtr pScrn)
 {
 	if (pScrn->driverPrivate != NULL)
 		return TRUE;
-	
+
 	pScrn->driverPrivate = xnfcalloc(sizeof(FBDevRec), 1);
 	return TRUE;
 }
@@ -278,11 +280,11 @@ static Bool FBDevPciProbe(DriverPtr drv, int entity_num,
 
     if (!xf86LoadDrvSubModule(drv, "fbdevhw"))
 	return FALSE;
-	    
+
     pScrn = xf86ConfigPciEntity(NULL, 0, entity_num, NULL, NULL,
 				NULL, NULL, NULL, NULL);
     if (pScrn) {
-	char *device;
+    char *device;
 	GDevPtr devSection = xf86GetDevFromEntity(pScrn->entityList[0],
 						  pScrn->entityInstanceList[0]);
 
@@ -301,7 +303,7 @@ static Bool FBDevPciProbe(DriverPtr drv, int entity_num,
 	    pScrn->ValidMode     = fbdevHWValidModeWeak();
 
 	    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
-		       "claimed PCI slot %d@%d:%d:%d\n", 
+		       "claimed PCI slot %d@%d:%d:%d\n",
 		       dev->bus, dev->domain, dev->dev, dev->func);
 	    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
 		       "using %s\n", device ? device : "default device");
@@ -335,12 +337,12 @@ FBDevProbe(DriverPtr drv, int flags)
 	if (flags & PROBE_DETECT)
 		return FALSE;
 
-	if ((numDevSections = xf86MatchDevice(FBDEV_DRIVER_NAME, &devSections)) <= 0) 
+	if ((numDevSections = xf86MatchDevice(FBDEV_DRIVER_NAME, &devSections)) <= 0)
 	    return FALSE;
-	
+
 	if (!xf86LoadDrvSubModule(drv, "fbdevhw"))
 	    return FALSE;
-	    
+
 	for (i = 0; i < numDevSections; i++) {
 	    Bool isIsa = FALSE;
 	    Bool isPci = FALSE;
@@ -361,7 +363,7 @@ FBDevProbe(DriverPtr drv, int flags)
 		else
 #endif
 		    0;
-		  
+
 	    }
 	    if (fbdevHWProbe(NULL,dev,NULL)) {
 		pScrn = NULL;
@@ -369,7 +371,7 @@ FBDevProbe(DriverPtr drv, int flags)
 #ifndef XSERVER_LIBPCIACCESS
 		    /* XXX what about when there's no busID set? */
 		    int entity;
-		    
+
 		    entity = xf86ClaimPciSlot(bus,device,func,drv,
 					      0,devSections[i],
 					      TRUE);
@@ -386,7 +388,7 @@ FBDevProbe(DriverPtr drv, int flags)
 		} else if (isIsa) {
 #ifdef HAVE_ISA
 		    int entity;
-		    
+
 		    entity = xf86ClaimIsaSlot(drv, 0,
 					      devSections[i], TRUE);
 		    pScrn = xf86ConfigIsaEntity(pScrn,0,entity,
@@ -400,11 +402,11 @@ FBDevProbe(DriverPtr drv, int flags)
 					      devSections[i], TRUE);
 		    pScrn = xf86ConfigFbEntity(pScrn,0,entity,
 					       NULL,NULL,NULL,NULL);
-		   
+
 		}
 		if (pScrn) {
 		    foundScreen = TRUE;
-		    
+
 		    pScrn->driverVersion = FBDEV_VERSION;
 		    pScrn->driverName    = FBDEV_DRIVER_NAME;
 		    pScrn->name          = FBDEV_NAME;
@@ -416,7 +418,7 @@ FBDevProbe(DriverPtr drv, int flags)
 		    pScrn->EnterVT       = fbdevHWEnterVTWeak();
 		    pScrn->LeaveVT       = fbdevHWLeaveVTWeak();
 		    pScrn->ValidMode     = fbdevHWValidModeWeak();
-		    
+
 		    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
 			       "using %s\n", dev ? dev : "default device");
 		}
@@ -464,7 +466,7 @@ FBDevPreInit(ScrnInfoPtr pScrn, int flags)
 	}
 #endif
 	/* open device */
-	if (!fbdevHWInit(pScrn,NULL,xf86FindOptionValue(fPtr->pEnt->device->options,"fbdev")))
+	if (!fbdevHWInit(pScrn, NULL, xf86FindOptionValue(fPtr->pEnt->device->options,"fbdev")))
 		return FALSE;
 	default_depth = fbdevHWGetDepth(pScrn,&fbbpp);
 	if (!xf86SetDepthBpp(pScrn, default_depth, default_depth, fbbpp,
@@ -575,7 +577,7 @@ FBDevPreInit(ScrnInfoPtr pScrn, int flags)
 	xf86DrvMsg(pScrn->scrnIndex, X_INFO, "checking modes against monitor...\n");
 	{
 		DisplayModePtr mode, first = mode = pScrn->modes;
-		
+
 		if (mode != NULL) do {
 			mode->status = xf86CheckModeForMonitor(mode, pScrn->monitor);
 			mode = mode->next;
@@ -688,7 +690,7 @@ FBDevShadowInit(ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     FBDevPtr fPtr = FBDEVPTR(pScrn);
-    
+
     if (!shadowSetup(pScreen)) {
 	return FALSE;
     }
@@ -1025,7 +1027,7 @@ FBDevScreenInit(SCREEN_INIT_ARGS_DECL)
 		return FALSE;
 	}
 	flags = CMAP_PALETTED_TRUECOLOR;
-	if(!xf86HandleColormaps(pScreen, 256, 8, fbdevHWLoadPaletteWeak(), 
+	if(!xf86HandleColormaps(pScreen, 256, 8, fbdevHWLoadPaletteWeak(),
 				NULL, flags))
 		return FALSE;
 
@@ -1066,8 +1068,22 @@ FBDevScreenInit(SCREEN_INIT_ARGS_DECL)
 		xf86DrvMsg(pScrn->scrnIndex, X_INFO,
 		           "using hardware cursor\n");
 	    else
-		xf86DrvMsg(pScrn->scrnIndex, X_INFO,
-		           "failed to enable hardware cursor\n");
+	    {
+	        // Try the raspi cursor code
+            fPtr->raspi_cursor = 0;
+
+	        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Detecting Raspi HW cursor...\n");
+
+	        fPtr->SunxiDispHardwareCursor_private = raspberry_cursor_init(pScreen);
+
+	        if (fPtr->SunxiDispHardwareCursor_private)
+	        {
+	            xf86DrvMsg(pScrn->scrnIndex, X_INFO, "using Raspi hardware cursor\n");
+	            fPtr->raspi_cursor = 1;
+	        }
+	        else
+               xf86DrvMsg(pScrn->scrnIndex, X_INFO, "failed to enable hardware cursor\n");
+       }
 	}
 
 #ifdef HAVE_LIBUMP
@@ -1121,7 +1137,11 @@ FBDevCloseScreen(CLOSE_SCREEN_ARGS_DECL)
 #endif
 
 	if (fPtr->SunxiDispHardwareCursor_private) {
-	    SunxiDispHardwareCursor_Close(pScreen);
+	    if (fPtr->raspi_cursor)
+	        raspberry_cursor_close(pScreen);
+	    else
+	        SunxiDispHardwareCursor_Close(pScreen);
+
 	    free(fPtr->SunxiDispHardwareCursor_private);
 	    fPtr->SunxiDispHardwareCursor_private = NULL;
 	}
@@ -1392,7 +1412,7 @@ static Bool
 FBDevDriverFunc(ScrnInfoPtr pScrn, xorgDriverFuncOp op, pointer ptr)
 {
     xorgHWFlags *flag;
-    
+
     switch (op) {
 	case GET_REQUIRED_HW_INTERFACES:
 	    flag = (CARD32*)ptr;

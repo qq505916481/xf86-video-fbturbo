@@ -54,6 +54,8 @@ typedef struct {
 	int				nDGAMode;
 	OptionInfoPtr			Options;
 
+	int                 raspi_cursor;  // true if using the raspberry pi HW cursor.
+
 	void				*cpu_backend_private;
 	void				*backing_store_tuner_private;
 	void				*sunxi_disp_private;
@@ -83,3 +85,5 @@ typedef struct {
 
 #define SUNXI_VIDEO(p) ((SunxiVideo *) \
                         (FBDEVPTR(p)->SunxiVideo_private))
+
+#define RASPI_DISP_HWC(p) ((raspberry_cursor_state_s *) (FBDEVPTR(p)->SunxiDispHardwareCursor_private))
