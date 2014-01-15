@@ -83,3 +83,5 @@ typedef struct {
 
 #define SUNXI_VIDEO(p) ((SunxiVideo *) \
                         (FBDEVPTR(p)->SunxiVideo_private))
+
+#define RASPI_DISP_HWC(p) ((raspberry_cursor_state_s *) (FBDEVPTR(p)->SunxiDispHardwareCursor_private))
