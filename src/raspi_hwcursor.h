@@ -28,29 +28,19 @@
 
 typedef struct
 {
-
-} cursorinfo_s;
-
-typedef struct
-{
    int enabled;
    int x;
    int y;
-} cursorstate_s;
-
-
-typedef struct
-{
-   cursorinfo_s  info;
-   cursorstate_s state;
 
    xf86CursorInfoPtr InfoPtr;
+   int mailbox_fd;
 
 } raspberry_cursor_state_s;
 
 #define MAX_ARGB_CURSOR_HEIGHT 64
 #define MAX_ARGB_CURSOR_WIDTH  64
 
-
+extern raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen);
+extern void raspberry_cursor_close(ScreenPtr pScreen);
 
 #endif /* RASPI_CURSOR_H_ */
