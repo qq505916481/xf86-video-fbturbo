@@ -165,32 +165,32 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     int fd;
     struct stat stat_buf;
 
+    sunxi_disp_t *disp = SUNXI_DISP(pScrn);
+    if (!disp)
+        return NULL;
+
     // See if we have a device node, if not create one.
     if (stat(MAILBOX_DEVICE_FILENAME, &stat_buf) == -1)
     {
        // No node so attempt to create one.
        // Character device, readable by all
-       mknod(MAILBOX_DEVICE_FILENAME, S_IFCHR | S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH, makedev(MAJOR, MINOR));
+       if (mknod(MAILBOX_DEVICE_FILENAME, S_IFCHR | S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH, makedev(MAJOR, MINOR)) == -1)
+          xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: failed to create device node\n");
     }
 
     // First check to see if we have the mailbox char device
     fd = open(MAILBOX_DEVICE_FILENAME, 0);
     if (fd < 0)
     {
-       ErrorF("raspberry_cursor_init: no mailbox\n");
+       xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: no mailbox found\n");
        return NULL;
     }
 
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
 
-    sunxi_disp_t *disp = SUNXI_DISP(pScrn);
-
-    if (!disp)
-        return NULL;
-
     if (!(InfoPtr = xf86CreateCursorInfoRec()))
     {
-        ErrorF("raspberry_cursor_init: xf86CreateCursorInfoRec() failed\n");
+        xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: xf86CreateCursorInfoRec() failed\n");
         return NULL;
     }
 
@@ -207,7 +207,7 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
 
     if (!xf86InitCursor(pScreen, InfoPtr))
     {
-        ErrorF("raspberry_cursor_init: xf86InitCursor(pScreen, InfoPtr) failed\n");
+        xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: xf86InitCursor(pScreen, InfoPtr) failed\n");
         xf86DestroyCursorInfoRec(InfoPtr);
         return NULL;
     }
@@ -215,7 +215,7 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     state = calloc(1, sizeof(raspberry_cursor_state_s));
     if (!state)
     {
-        ErrorF("raspberry_cursor_init: calloc failed\n");
+        xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: calloc failed\n");
         xf86DestroyCursorInfoRec(InfoPtr);
         return NULL;
     }
