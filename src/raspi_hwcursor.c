@@ -164,10 +164,9 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     raspberry_cursor_state_s *state;
     int fd;
     struct stat stat_buf;
+    ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
 
-    sunxi_disp_t *disp = SUNXI_DISP(pScrn);
-    if (!disp)
-        return NULL;
+    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Entered\n");
 
     // See if we have a device node, if not create one.
     if (stat(MAILBOX_DEVICE_FILENAME, &stat_buf) == -1)
@@ -186,8 +185,6 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
        return NULL;
     }
 
-    ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
-
     if (!(InfoPtr = xf86CreateCursorInfoRec()))
     {
         xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: xf86CreateCursorInfoRec() failed\n");
@@ -199,7 +196,9 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     InfoPtr->SetCursorPosition = SetCursorPosition;
     InfoPtr->SetCursorColors = SetCursorColors;
     InfoPtr->LoadCursorImage = LoadCursorImage;
-    InfoPtr->MaxWidth = InfoPtr->MaxHeight = 64;
+
+    InfoPtr->MaxWidth = MAX_ARGB_CURSOR_WIDTH;
+    InfoPtr->MaxHeight = MAX_ARGB_CURSOR_HEIGHT;
     InfoPtr->Flags = HARDWARE_CURSOR_ARGB;
 
     InfoPtr->UseHWCursorARGB = UseHWCursorARGB;
