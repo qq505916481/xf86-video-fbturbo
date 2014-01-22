@@ -27,8 +27,11 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+
+#include "raspi_memory.h"
 
 // Use a page size of 4k
 static const int page_size = 4*1024;
@@ -36,6 +39,9 @@ static const int alignment = 4*1024;
 
 // Might be a define for this somewhere in the raspi userland headers somewhere?
 #define MEMORY_ALLOCATE_FLAG 0x0c
+
+extern int set_mailbox_property(int file_desc, void *buf);
+
 
 /** map the specified address in to userspace
  *
@@ -70,9 +76,9 @@ void *map_memory(unsigned int base, unsigned int size)
       return NULL;
    }
 
-   close(mem_fd);
+   close(fd);
 
-   return mem + offset;
+   return memory + offset;
 }
 
 /** Unmap previously mapped memory
@@ -87,20 +93,26 @@ void *unmap_memory(void *addr, unsigned int size)
 
    if (s != 0)
    {
+      // how to report error?
       return NULL;
    }
+
+   return NULL;
 }
 
-/** Alloc memory on the Videocore via mailbox call
+/** Alloc a block of relocatable memory on the Videocore via mailbox call
  *
- * @param fd
- *
+ * @param fd file descriptor of the mailbox driver
+ * @param size size of block to allocate
+ * @param align ALignment requirements
+ * @param flags VC4 Allocation flag
+ * @return Handle to the memory block, or NULL
  */
 unsigned int memory_alloc(int fd, unsigned int size, unsigned int align, unsigned int flags)
 {
    int i=0;
    unsigned int p[32];
-   p[i++] = 0; // size. Filled in below
+   p[i++] = 0;       // size. Filled in below
    p[i++] = 0x00000000;
 
    p[i++] = 0x3000c; // (the tag id)
@@ -118,16 +130,22 @@ unsigned int memory_alloc(int fd, unsigned int size, unsigned int align, unsigne
    return p[5];
 }
 
+/** Free memory previously allocated on the Videocore via mailbox call
+ *
+ * @param fd file descriptor of the mailbox driver
+ * @param handle Handle to thememory block as returned by the alloc call
+ *
+ */
 unsigned int memory_free(int file_desc, unsigned int handle)
 {
    int i=0;
    unsigned int p[32];
-   p[i++] = 0; // size
-   p[i++] = 0x00000000; // process request
+   p[i++] = 0;
+   p[i++] = 0x00000000;
 
-   p[i++] = 0x3000f; // (the tag id)
-   p[i++] = 4; // (size of the buffer)
-   p[i++] = 4; // (size of the data)
+   p[i++] = 0x3000f;
+   p[i++] = 4;
+   p[i++] = 4;
    p[i++] = handle;
 
    p[i++] = 0x00000000; // end tag
@@ -138,16 +156,42 @@ unsigned int memory_free(int file_desc, unsigned int handle)
    return p[5];
 }
 
+/** Lock a block of relocatable memory Videocore via mailbox call
+ *
+ * @param fd file descriptor of the mailbox driver
+ * @param handle Handle to thememory block as returned by the alloc call
+ * @return Pointer (in video core address space) to the locked block
+ */
 unsigned int memory_lock(int file_desc, unsigned int handle)
 {
    int i=0;
    unsigned int p[32];
-   p[i++] = 0; // size
-   p[i++] = 0x00000000; // process request
+   p[i++] = 0;
+   p[i++] = 0x00000000;
 
-   p[i++] = 0x3000d; // (the tag id)
-   p[i++] = 4; // (size of the buffer)
-   p[i++] = 4; // (size of the data)
+   p[i++] = 0x3000d;
+   p[i++] = 4;
+   p[i++] = 4;
+   p[i++] = handle;
+
+   p[i++] = 0x00000000; // end tag
+   p[0] = i*sizeof(*p); // actual size
+
+   set_mailbox_property(file_desc, p);
+
+   return p[5];
+}
+
+unsigned memory_unlock(int file_desc, unsigned handle)
+{
+   int i=0;
+   unsigned int p[32];
+   p[i++] = 0;
+   p[i++] = 0x00000000;
+
+   p[i++] = 0x3000e;
+   p[i++] = 4;
+   p[i++] = 4;
    p[i++] = handle;
 
    p[i++] = 0x00000000; // end tag

@@ -33,10 +33,10 @@ typedef struct
   unsigned int size;
 } VIDEOCORE_MEMORY_H;
 
-unsigned memory_alloc(int file_desc, unsigned size, unsigned align, unsigned flags);
-unsigned memory_free(int file_desc, unsigned handle);
-unsigned memory_lock(int file_desc, unsigned handle);
-unsigned memory_unlock(int file_desc, unsigned handle);
+unsigned int memory_alloc(int file_desc, unsigned size, unsigned align, unsigned flags);
+unsigned int memory_free(int file_desc, unsigned handle);
+unsigned int memory_lock(int file_desc, unsigned handle);
+unsigned int memory_unlock(int file_desc, unsigned handle);
 
 VIDEOCORE_MEMORY_H videocore_alloc(int file_desc, int size);
 void videocore_free(int file_desc, VIDEOCORE_MEMORY_H mem);

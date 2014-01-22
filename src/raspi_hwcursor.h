@@ -21,7 +21,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-
+#include "raspi_memory.h"
 
 #ifndef RASPI_CURSOR_H_
 #define RASPI_CURSOR_H_
@@ -40,6 +40,9 @@ typedef struct
 
    xf86CursorInfoPtr InfoPtr;
    int mailbox_fd;
+
+   VIDEOCORE_MEMORY_H transfer_buffer;
+   int transfer_buffer_size;
 
 } raspberry_cursor_state_s;
 

@@ -52,7 +52,7 @@
 #define MIN_RASPI_VERSION_NUMBER 1000
 
 
-static int set_mailbox_property(int file_desc, void *buf)
+int set_mailbox_property(int file_desc, void *buf)
 {
    int retval = ioctl(file_desc, IOCTL_MBOX_PROPERTY, buf);
 
@@ -178,38 +178,19 @@ static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
 {
     raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
     VIDEOCORE_MEMORY_H mem;
-    int alloc_size;
+    int copy_size;
 
-    state->width  = max(pCurs->bits->width, 16);
-    state->height = max(pCurs->bits->height, 16);
+    state->width  = pCurs->bits->width;
+    state->height = pCurs->bits->height;
     state->format = 0;
     state->hotspotx = pCurs->bits->yhot;
     state->hotspoty = pCurs->bits->yhot;
 
-    alloc_size = state->width*state->height*4; // 4 bytes/pixel
-
-    mem = videocore_alloc(state->mailbox_fd, alloc_size);
-
     // Copy bits to our VC memory
 
-    if (state->width == pCurs->bits->width && state->height == pCurs->bits->height)
-    {
-       memcpy(mem.user, pCurs->bits->argb, alloc_size);
-    }
-    else
-    {
-       int x,y;
-       uint32_t *pixels = (uint32_t *)mem.user;
+    copy_size = min(state->width * state->height * 4, state->transfer_buffer_size) ; // 4 bytes/pixel
 
-       memset(mem.user, 0, alloc_size);
-
-       for (y=0;y<pCurs->bits->height;y++)
-          for (x=0;y<pCurs->bits->width;y++)
-          {
-             *(pixels + (y*state->width + x)) = *(pCurs->bits->argb + (y*pCurs->bits->width + x));
-          }
-
-    }
+    memcpy(state->transfer_buffer.user, pCurs->bits->argb, copy_size);
 
     set_cursor_info(state, (unsigned int*)mem.buffer);
 
@@ -244,6 +225,9 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     struct stat stat_buf;
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
     unsigned int version;
+    VIDEOCORE_MEMORY_H mem;
+    int alloc_size;
+
 
     xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Entered\n");
 
@@ -308,6 +292,11 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
         return NULL;
     }
 
+    // Get some videocore memory for pixel buffer when transferring cursor image to GPU
+    // Allocate the max size we will need. Its not a huge amount anyway.
+    state->transfer_buffer_size = MAX_ARGB_CURSOR_HEIGHT * MAX_ARGB_CURSOR_WIDTH * 4;// 4 bytes/pixel
+    state->transfer_buffer = videocore_alloc(fd, state->transfer_buffer_size);
+
     state->InfoPtr = InfoPtr;
     state->mailbox_fd = fd;
 
@@ -322,6 +311,7 @@ void raspberry_cursor_close(ScreenPtr pScreen)
 
     if (state)
     {
+        videocore_free(state->mailbox_fd, state->transfer_buffer);
         xf86DestroyCursorInfoRec(state->InfoPtr);
         close(state->mailbox_fd);
     }
