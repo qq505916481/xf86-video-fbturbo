@@ -1,5 +1,5 @@
 /*
- * Copyright © 2013 James Hughes jnahughes@googlemail.com
+ * Copyright © 2014 James Hughes jnahughes@googlemail.com
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -41,6 +41,7 @@
 #include "sunxi_disp.h"
 #include "fbdev_priv.h"
 #include "raspi_hwcursor.h"
+#include "raspi_memory.h"
 
 // device parameters
 #define MAILBOX_DEVICE_FILENAME "/dev/vc4mail"
@@ -48,6 +49,7 @@
 #define MINOR 0
 #define IOCTL_MBOX_PROPERTY   _IOWR(MAJOR, MINOR, char *)
 
+#define MIN_RASPI_VERSION_NUMBER 1000
 
 
 static int set_mailbox_property(int file_desc, void *buf)
@@ -80,6 +82,31 @@ static unsigned int set_cursor_position(raspberry_cursor_state_s *state)
 
    set_mailbox_property(state->mailbox_fd, p);
    return p[5];
+}
+
+static unsigned int set_cursor_info(raspberry_cursor_state_s *state, unsigned int *pixels)
+{
+   int i=0;
+   unsigned int p[32];
+   p[i++] = 0; // size
+   p[i++] = 0x00000000; // process request
+   p[i++] = 0x00008010; // set cursor state
+   p[i++] = 24; // buffer size
+   p[i++] = 24; // data size
+
+   p[i++] = state->width;
+   p[i++] = state->height;
+   p[i++] = state->format;
+   p[i++] = (int)pixels;           // ptr to VC memory buffer
+   p[i++] = state->hotspotx;
+   p[i++] = state->hotspoty;
+
+   p[i++] = 0x00000000; // end tag
+   p[0] = i*sizeof *p; // actual size
+
+   set_mailbox_property(state->mailbox_fd, p);
+   return p[5];
+
 }
 
 static void ShowCursor(ScrnInfoPtr pScrn)
@@ -150,13 +177,64 @@ static Bool UseHWCursorARGB(ScreenPtr pScreen, CursorPtr pCurs)
 static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
 {
     raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
+    VIDEOCORE_MEMORY_H mem;
+    int alloc_size;
 
-    int           width  = pCurs->bits->width;
-    int           height = pCurs->bits->height;
+    state->width  = max(pCurs->bits->width, 16);
+    state->height = max(pCurs->bits->height, 16);
+    state->format = 0;
+    state->hotspotx = pCurs->bits->yhot;
+    state->hotspoty = pCurs->bits->yhot;
 
+    alloc_size = state->width*state->height*4; // 4 bytes/pixel
 
+    mem = videocore_alloc(state->mailbox_fd, alloc_size);
 
+    // Copy bits to our VC memory
+
+    if (state->width == pCurs->bits->width && state->height == pCurs->bits->height)
+    {
+       memcpy(mem.user, pCurs->bits->argb, alloc_size);
+    }
+    else
+    {
+       int x,y;
+       uint32_t *pixels = (uint32_t *)mem.user;
+
+       memset(mem.user, 0, alloc_size);
+
+       for (y=0;y<pCurs->bits->height;y++)
+          for (x=0;y<pCurs->bits->width;y++)
+          {
+             *(pixels + (y*state->width + x)) = *(pCurs->bits->argb + (y*pCurs->bits->width + x));
+          }
+
+    }
+
+    set_cursor_info(state, (unsigned int*)mem.buffer);
+
+    videocore_free(state->mailbox_fd, mem);
 }
+
+static unsigned get_version(int file_desc)
+{
+   int i=0;
+   unsigned p[32];
+   p[i++] = 0; // size
+   p[i++] = 0x00000000; // process request
+
+   p[i++] = 0x00000001; // get firmware version
+   p[i++] = 0x00000004; // buffer size
+   p[i++] = 0x00000000; // request size
+   p[i++] = 0x00000000; // value buffer
+
+   p[i++] = 0x00000000; // end tag
+   p[0] = i*sizeof *p; // actual size
+
+   set_mailbox_property(file_desc, p);
+   return p[5];
+}
+
 
 raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
 {
@@ -165,6 +243,7 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     int fd;
     struct stat stat_buf;
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+    unsigned int version;
 
     xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Entered\n");
 
@@ -182,6 +261,16 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     if (fd < 0)
     {
        xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: no mailbox found\n");
+       return NULL;
+    }
+
+    // Get the firmware number to ensure we have cursor support.
+    version = get_version(fd);
+    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Detected firmware version %d)\n", version);
+
+    if ( version < MIN_RASPI_VERSION_NUMBER)
+    {
+       xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: No cursor support present in this firmware\n");
        return NULL;
     }
 

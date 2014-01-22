@@ -1,5 +1,6 @@
-/*
+ /*
  * Copyright © 2014 James Hughes jnahughes@googlemail.com
+ * Based on some code copyright Herman Hermitage
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,32 +22,23 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-
-
-#ifndef RASPI_CURSOR_H_
-#define RASPI_CURSOR_H_
+#ifndef RASPI_MEMORY_H_
+#define RASPI_MEMORY_H_
 
 typedef struct
 {
-   int enabled;
-   int x;
-   int y;
+  unsigned int handle;
+  unsigned int buffer;
+  void *user;
+  unsigned int size;
+} VIDEOCORE_MEMORY_H;
 
-   int width;
-   int height;
-   int format; // Not used
-   int hotspotx;
-   int hotspoty;
+unsigned memory_alloc(int file_desc, unsigned size, unsigned align, unsigned flags);
+unsigned memory_free(int file_desc, unsigned handle);
+unsigned memory_lock(int file_desc, unsigned handle);
+unsigned memory_unlock(int file_desc, unsigned handle);
 
-   xf86CursorInfoPtr InfoPtr;
-   int mailbox_fd;
+VIDEOCORE_MEMORY_H videocore_alloc(int file_desc, int size);
+void videocore_free(int file_desc, VIDEOCORE_MEMORY_H mem);
 
-} raspberry_cursor_state_s;
-
-#define MAX_ARGB_CURSOR_HEIGHT 64
-#define MAX_ARGB_CURSOR_WIDTH  64
-
-extern raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen);
-extern void raspberry_cursor_close(ScreenPtr pScreen);
-
-#endif /* RASPI_CURSOR_H_ */
+#endif /* RASPI_MEMORY_H_ */
