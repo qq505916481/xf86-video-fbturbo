@@ -84,7 +84,7 @@ static unsigned int set_cursor_position(raspberry_cursor_state_s *state)
    return p[5];
 }
 
-static unsigned int set_cursor_info(raspberry_cursor_state_s *state, unsigned int *pixels)
+static unsigned int set_cursor_info(raspberry_cursor_state_s *state)
 {
    int i=0;
    unsigned int p[32];
@@ -97,12 +97,12 @@ static unsigned int set_cursor_info(raspberry_cursor_state_s *state, unsigned in
    p[i++] = state->width;
    p[i++] = state->height;
    p[i++] = state->format;
-   p[i++] = (int)pixels;           // ptr to VC memory buffer
+   p[i++] = (int)state->transfer_buffer.buffer;           // ptr to VC memory buffer
    p[i++] = state->hotspotx;
    p[i++] = state->hotspoty;
 
    p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof *p; // actual size
+   p[0] = i*sizeof(*p); // actual size
 
    set_mailbox_property(state->mailbox_fd, p);
    return p[5];
@@ -177,7 +177,6 @@ static Bool UseHWCursorARGB(ScreenPtr pScreen, CursorPtr pCurs)
 static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
 {
     raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
-    VIDEOCORE_MEMORY_H mem;
     int copy_size;
 
     state->width  = pCurs->bits->width;
@@ -186,15 +185,15 @@ static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
     state->hotspotx = pCurs->bits->yhot;
     state->hotspoty = pCurs->bits->yhot;
 
-    // Copy bits to our VC memory
+    // Clear our transfer buffer up front
+    memset(state->transfer_buffer.user, 0, state->transfer_buffer_size);
 
+    // Copy cursor pixels to our VC memory
     copy_size = min(state->width * state->height * 4, state->transfer_buffer_size) ; // 4 bytes/pixel
 
     memcpy(state->transfer_buffer.user, pCurs->bits->argb, copy_size);
 
-    set_cursor_info(state, (unsigned int*)mem.buffer);
-
-    videocore_free(state->mailbox_fd, mem);
+    set_cursor_info(state);
 }
 
 static unsigned get_version(int file_desc)
