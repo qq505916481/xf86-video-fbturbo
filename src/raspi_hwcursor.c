@@ -182,8 +182,10 @@ static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
     state->width  = pCurs->bits->width;
     state->height = pCurs->bits->height;
     state->format = 0;
-    state->hotspotx = pCurs->bits->yhot;
-    state->hotspoty = pCurs->bits->yhot;
+
+    // It appears that the hotspot is already compensated for by X, so we dont need to pass it on.
+    state->hotspotx = 0; // pCurs->bits->yhot;
+    state->hotspoty = 0; // pCurs->bits->yhot;
 
     // Clear our transfer buffer up front
     memset(state->transfer_buffer.user, 0, state->transfer_buffer_size);
