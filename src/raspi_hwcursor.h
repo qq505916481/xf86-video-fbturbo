@@ -21,7 +21,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "raspi_memory.h"
+#include "raspi_mailbox.h"
 
 #ifndef RASPI_CURSOR_H_
 #define RASPI_CURSOR_H_

@@ -30,8 +30,9 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 
-#include "raspi_memory.h"
+#include "raspi_mailbox.h"
 
 // Use a page size of 4k
 static const int page_size = 4*1024;
@@ -40,7 +41,24 @@ static const int alignment = 4*1024;
 // Might be a define for this somewhere in the raspi userland headers somewhere?
 #define MEMORY_ALLOCATE_FLAG 0x0c
 
-extern int set_mailbox_property(int file_desc, void *buf);
+// device parameters
+#define MAILBOX_DEVICE_FILENAME "/dev/vc4mail"
+#define MAJOR 100
+#define MINOR 0
+#define IOCTL_MBOX_PROPERTY   _IOWR(MAJOR, MINOR, char *)
+
+
+
+static int set_mailbox_property(int file_desc, void *buf)
+{
+   int retval = ioctl(file_desc, IOCTL_MBOX_PROPERTY, buf);
+
+   if (retval < 0)
+   {
+      printf("ioctl_set_msg failed:%d\n", retval);
+   }
+   return retval;
+}
 
 
 /** map the specified address in to userspace
@@ -51,7 +69,7 @@ extern int set_mailbox_property(int file_desc, void *buf);
  * @return pointer to mapped memory, NULL if failed for any reason.
  *
  */
-void *map_memory(unsigned int base, unsigned int size)
+static void *map_memory(unsigned int base, unsigned int size)
 {
    int fd;
    unsigned int offset = base % page_size;
@@ -87,7 +105,7 @@ void *map_memory(unsigned int base, unsigned int size)
  * @param size
  *
  */
-void *unmap_memory(void *addr, unsigned int size)
+static void *unmap_memory(void *addr, unsigned int size)
 {
    int s = munmap(addr, size);
 
@@ -108,7 +126,7 @@ void *unmap_memory(void *addr, unsigned int size)
  * @param flags VC4 Allocation flag
  * @return Handle to the memory block, or NULL
  */
-unsigned int memory_alloc(int fd, unsigned int size, unsigned int align, unsigned int flags)
+unsigned int mailbox_memory_alloc(int fd, unsigned int size, unsigned int align, unsigned int flags)
 {
    int i=0;
    unsigned int p[32];
@@ -136,7 +154,7 @@ unsigned int memory_alloc(int fd, unsigned int size, unsigned int align, unsigne
  * @param handle Handle to thememory block as returned by the alloc call
  *
  */
-unsigned int memory_free(int file_desc, unsigned int handle)
+unsigned int mailbox_memory_free(int file_desc, unsigned int handle)
 {
    int i=0;
    unsigned int p[32];
@@ -162,7 +180,7 @@ unsigned int memory_free(int file_desc, unsigned int handle)
  * @param handle Handle to thememory block as returned by the alloc call
  * @return Pointer (in video core address space) to the locked block
  */
-unsigned int memory_lock(int file_desc, unsigned int handle)
+unsigned int mailbox_memory_lock(int file_desc, unsigned int handle)
 {
    int i=0;
    unsigned int p[32];
@@ -182,7 +200,13 @@ unsigned int memory_lock(int file_desc, unsigned int handle)
    return p[5];
 }
 
-unsigned memory_unlock(int file_desc, unsigned handle)
+/** Lock a block of relocatable memory Videocore via mailbox call
+ *
+ * @param fd file descriptor of the mailbox driver
+ * @param handle Handle to thememory block as returned by the alloc call
+ * @return ??? Dunno
+ */
+unsigned int mailbox_memory_unlock(int file_desc, unsigned handle)
 {
    int i=0;
    unsigned int p[32];
@@ -202,23 +226,134 @@ unsigned memory_unlock(int file_desc, unsigned handle)
    return p[5];
 }
 
+/** Function that wraps the mailbox calls above to make a easy to use
+ * allocation function
+ *
+ * @param fd file descriptor of the mailbox driver
+ * @param size AMount of memory to allocate
+ * @return A structure containing the allocation details.
+ */
 
-VIDEOCORE_MEMORY_H videocore_alloc(int fd, int size)
+VIDEOCORE_MEMORY_H mailbox_videocore_alloc(int fd, int size)
 {
    VIDEOCORE_MEMORY_H mem;
 
    // allocate memory on GPU, map it ready for use
-   mem.handle = memory_alloc(fd, size, alignment, MEMORY_ALLOCATE_FLAG);
-   mem.buffer = memory_lock(fd, mem.handle);
+   mem.handle = mailbox_memory_alloc(fd, size, alignment, MEMORY_ALLOCATE_FLAG);
+   mem.buffer = mailbox_memory_lock(fd, mem.handle);
    mem.user = map_memory(mem.buffer, size);
    mem.size = size;
 
    return mem;
 }
 
-void videocore_free(int file_desc, VIDEOCORE_MEMORY_H mem)
+/** Function that wraps the mailbox calls above to make a easy to use
+ * deallocation function
+ *
+ * @param fd file descriptor of the mailbox driver
+ * @param mem Structure that was the result of the allocate call
+ */
+void mailbox_videocore_free(int file_desc, VIDEOCORE_MEMORY_H mem)
 {
    unmap_memory(mem.user, mem.size);
-   memory_unlock(file_desc, mem.handle);
-   memory_free(file_desc, mem.handle);
+   mailbox_memory_unlock(file_desc, mem.handle);
+   mailbox_memory_free(file_desc, mem.handle);
+}
+
+
+unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int y)
+{
+   int i=0;
+   unsigned p[32];
+   p[i++] = 0; // size
+   p[i++] = 0x00000000; // process request
+   p[i++] = 0x00008011; // set cursor state
+   p[i++] = 12; // buffer size
+   p[i++] = 12; // data size
+
+   p[i++] = enabled;
+   p[i++] = x;
+   p[i++] = y;
+
+   p[i++] = 0x00000000; // end tag
+   p[0] = i*sizeof *p; // actual size
+
+   set_mailbox_property(file_desc, p);
+   return p[5];
+}
+
+unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int format, void* buffer, int hotspotx, int hotspoty)
+{
+   int i=0;
+   unsigned int p[32];
+   p[i++] = 0; // size
+   p[i++] = 0x00000000; // process request
+   p[i++] = 0x00008010; // set cursor state
+   p[i++] = 24; // buffer size
+   p[i++] = 24; // data size
+
+   p[i++] = width;
+   p[i++] = height;
+   p[i++] = format;
+   p[i++] = (int)buffer;           // ptr to VC memory buffer
+   p[i++] = hotspotx;
+   p[i++] = hotspoty;
+
+   p[i++] = 0x00000000; // end tag
+   p[0] = i*sizeof(*p); // actual size
+
+   set_mailbox_property( file_desc, p);
+   return p[5];
+
+}
+
+unsigned get_version(int file_desc)
+{
+   int i=0;
+   unsigned p[32];
+   p[i++] = 0; // size
+   p[i++] = 0x00000000; // process request
+
+   p[i++] = 0x00000001; // get firmware version
+   p[i++] = 0x00000004; // buffer size
+   p[i++] = 0x00000000; // request size
+   p[i++] = 0x00000000; // value buffer
+
+   p[i++] = 0x00000000; // end tag
+   p[0] = i*sizeof *p; // actual size
+
+   set_mailbox_property(file_desc, p);
+   return p[5];
+}
+
+
+int mailbox_init()
+{
+   struct stat stat_buf;
+   int fd;
+
+   // See if we have a device node, if not create one.
+   if (stat(MAILBOX_DEVICE_FILENAME, &stat_buf) == -1)
+   {
+      // No node so attempt to create one.
+      // Character device, readable by all
+      if (mknod(MAILBOX_DEVICE_FILENAME, S_IFCHR | S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH, makedev(MAJOR, MINOR)) == -1)
+         return 0;
+   }
+
+   // First check to see if we have the mailbox char device
+   fd = open(MAILBOX_DEVICE_FILENAME, 0);
+   if (fd < 0)
+   {
+      return 0;
+   }
+
+   return fd;
+}
+
+int mailbox_deinit(int fd)
+{
+   close(fd);
+
+   // Should I delete the node?
 }

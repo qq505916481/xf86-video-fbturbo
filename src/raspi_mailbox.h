@@ -33,12 +33,22 @@ typedef struct
   unsigned int size;
 } VIDEOCORE_MEMORY_H;
 
-unsigned int memory_alloc(int file_desc, unsigned size, unsigned align, unsigned flags);
-unsigned int memory_free(int file_desc, unsigned handle);
-unsigned int memory_lock(int file_desc, unsigned handle);
-unsigned int memory_unlock(int file_desc, unsigned handle);
+int mailbox_init();
+int mailbox_deinit(int fd);
 
-VIDEOCORE_MEMORY_H videocore_alloc(int file_desc, int size);
-void videocore_free(int file_desc, VIDEOCORE_MEMORY_H mem);
+unsigned int mailbox_memory_alloc(int file_desc, unsigned int size, unsigned int align, unsigned int flags);
+unsigned int mailbox_memory_free(int file_desc, unsigned int handle);
+unsigned int mailbox_memory_lock(int file_desc, unsigned int handle);
+unsigned int mailbox_memory_unlock(int file_desc, unsigned int handle);
+
+
+VIDEOCORE_MEMORY_H mailbox_videocore_alloc(int file_desc, int size);
+void mailbox_videocore_free(int file_desc, VIDEOCORE_MEMORY_H mem);
+
+unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int y);
+unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int format, void* buffer, int hotspotx, int hotspoty);
+
+unsigned int mailbox_get_version(int file_desc);
+
 
 #endif /* RASPI_MEMORY_H_ */

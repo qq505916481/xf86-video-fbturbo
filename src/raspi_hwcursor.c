@@ -29,7 +29,6 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -41,73 +40,12 @@
 #include "sunxi_disp.h"
 #include "fbdev_priv.h"
 #include "raspi_hwcursor.h"
-#include "raspi_memory.h"
+#include "raspi_mailbox.h"
 
-// device parameters
-#define MAILBOX_DEVICE_FILENAME "/dev/vc4mail"
-#define MAJOR 100
-#define MINOR 0
-#define IOCTL_MBOX_PROPERTY   _IOWR(MAJOR, MINOR, char *)
 
 #define MIN_RASPI_VERSION_NUMBER 1000
 
 
-int set_mailbox_property(int file_desc, void *buf)
-{
-   int retval = ioctl(file_desc, IOCTL_MBOX_PROPERTY, buf);
-
-   if (retval < 0)
-   {
-      printf("ioctl_set_msg failed:%d\n", retval);
-   }
-   return retval;
-}
-
-static unsigned int set_cursor_position(raspberry_cursor_state_s *state)
-{
-   int i=0;
-   unsigned p[32];
-   p[i++] = 0; // size
-   p[i++] = 0x00000000; // process request
-   p[i++] = 0x00008011; // set cursor state
-   p[i++] = 12; // buffer size
-   p[i++] = 12; // data size
-
-   p[i++] = state->enabled;
-   p[i++] = state->x;
-   p[i++] = state->y;
-
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof *p; // actual size
-
-   set_mailbox_property(state->mailbox_fd, p);
-   return p[5];
-}
-
-static unsigned int set_cursor_info(raspberry_cursor_state_s *state)
-{
-   int i=0;
-   unsigned int p[32];
-   p[i++] = 0; // size
-   p[i++] = 0x00000000; // process request
-   p[i++] = 0x00008010; // set cursor state
-   p[i++] = 24; // buffer size
-   p[i++] = 24; // data size
-
-   p[i++] = state->width;
-   p[i++] = state->height;
-   p[i++] = state->format;
-   p[i++] = (int)state->transfer_buffer.buffer;           // ptr to VC memory buffer
-   p[i++] = state->hotspotx;
-   p[i++] = state->hotspoty;
-
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof(*p); // actual size
-
-   set_mailbox_property(state->mailbox_fd, p);
-   return p[5];
-
-}
 
 static void ShowCursor(ScrnInfoPtr pScrn)
 {
@@ -115,7 +53,7 @@ static void ShowCursor(ScrnInfoPtr pScrn)
 
     state->enabled = 1;
 
-    set_cursor_position(state);
+    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
 }
 
 static void HideCursor(ScrnInfoPtr pScrn)
@@ -124,7 +62,7 @@ static void HideCursor(ScrnInfoPtr pScrn)
 
    state->enabled = 0;
 
-   set_cursor_position(state);
+   mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
 }
 
 static void SetCursorPosition(ScrnInfoPtr pScrn, int x, int y)
@@ -134,17 +72,17 @@ static void SetCursorPosition(ScrnInfoPtr pScrn, int x, int y)
    state->x = x;
    state->y = y;
 
-   set_cursor_position(state);
+   mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
 }
 
 static void SetCursorColors(ScrnInfoPtr pScrn, int bg, int fg)
 {
-   // Can we support this?
+   // we only support the ARGB cursor on Raspi.
 }
 
 static void LoadCursorImage(ScrnInfoPtr pScrn, unsigned char *bits)
 {
-   raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
+   // we only support the ARGB cursor on Raspi.
 }
 
 
@@ -168,7 +106,7 @@ static Bool UseHWCursorARGB(ScreenPtr pScreen, CursorPtr pCurs)
          state->enabled = 0;
     }
 
-    set_cursor_position(state);
+    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
 
     return state->enabled ? TRUE : FALSE;
 }
@@ -195,26 +133,7 @@ static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
 
     memcpy(state->transfer_buffer.user, pCurs->bits->argb, copy_size);
 
-    set_cursor_info(state);
-}
-
-static unsigned get_version(int file_desc)
-{
-   int i=0;
-   unsigned p[32];
-   p[i++] = 0; // size
-   p[i++] = 0x00000000; // process request
-
-   p[i++] = 0x00000001; // get firmware version
-   p[i++] = 0x00000004; // buffer size
-   p[i++] = 0x00000000; // request size
-   p[i++] = 0x00000000; // value buffer
-
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof *p; // actual size
-
-   set_mailbox_property(file_desc, p);
-   return p[5];
+    mailbox_set_cursor_info(state->mailbox_fd, state->width, state->height, state->format, (void*)state->transfer_buffer.buffer, state->hotspotx, state->hotspoty);
 }
 
 
@@ -223,34 +142,24 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     xf86CursorInfoPtr InfoPtr;
     raspberry_cursor_state_s *state;
     int fd;
-    struct stat stat_buf;
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
     unsigned int version;
     VIDEOCORE_MEMORY_H mem;
     int alloc_size;
 
-
     xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Entered\n");
 
-    // See if we have a device node, if not create one.
-    if (stat(MAILBOX_DEVICE_FILENAME, &stat_buf) == -1)
-    {
-       // No node so attempt to create one.
-       // Character device, readable by all
-       if (mknod(MAILBOX_DEVICE_FILENAME, S_IFCHR | S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH, makedev(MAJOR, MINOR)) == -1)
-          xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: failed to create device node\n");
-    }
+    fd = mailbox_init();
 
-    // First check to see if we have the mailbox char device
-    fd = open(MAILBOX_DEVICE_FILENAME, 0);
-    if (fd < 0)
+    if (fd == 0)
     {
-       xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: no mailbox found\n");
+       xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Failed to initialise mailbox\n");
        return NULL;
     }
 
     // Get the firmware number to ensure we have cursor support.
-    version = get_version(fd);
+    version = mailbox_get_version(fd);
+
     xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Detected firmware version %d)\n", version);
 
     if ( version < MIN_RASPI_VERSION_NUMBER)
@@ -296,7 +205,7 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     // Get some videocore memory for pixel buffer when transferring cursor image to GPU
     // Allocate the max size we will need. Its not a huge amount anyway.
     state->transfer_buffer_size = MAX_ARGB_CURSOR_HEIGHT * MAX_ARGB_CURSOR_WIDTH * 4;// 4 bytes/pixel
-    state->transfer_buffer = videocore_alloc(fd, state->transfer_buffer_size);
+    state->transfer_buffer = mailbox_videocore_alloc(fd, state->transfer_buffer_size);
 
     state->InfoPtr = InfoPtr;
     state->mailbox_fd = fd;
@@ -312,9 +221,12 @@ void raspberry_cursor_close(ScreenPtr pScreen)
 
     if (state)
     {
-        videocore_free(state->mailbox_fd, state->transfer_buffer);
+        // Get rid of cursor
+        mailbox_set_cursor_position(state->mailbox_fd, 0, state->x, state->y);
+
+        mailbox_videocore_free(state->mailbox_fd, state->transfer_buffer);
         xf86DestroyCursorInfoRec(state->InfoPtr);
-        close(state->mailbox_fd);
+        mailbox_deinit(state->mailbox_fd);
     }
 }
 

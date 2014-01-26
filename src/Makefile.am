@@ -55,8 +55,8 @@ fbturbo_drv_la_SOURCES = \
          g2d_driver.h \
          raspi_hwcursor.c \
          raspi_hwcursor.h \
-         raspi_memory.c \
-         raspi_memory.h
+         raspi_mailbox.c \
+         raspi_mailbox.h
 
 if HAVE_LIBUMP
 fbturbo_drv_la_SOURCES += \
