@@ -233,7 +233,6 @@ unsigned int mailbox_memory_unlock(int file_desc, unsigned handle)
  * @param size AMount of memory to allocate
  * @return A structure containing the allocation details.
  */
-
 VIDEOCORE_MEMORY_H mailbox_videocore_alloc(int fd, int size)
 {
    VIDEOCORE_MEMORY_H mem;
@@ -261,6 +260,13 @@ void mailbox_videocore_free(int file_desc, VIDEOCORE_MEMORY_H mem)
 }
 
 
+/** Function that sets the HW cursor position on the display
+ *
+ * @param file_desc file descriptor of the mailbox driver
+ * @param enabled Flag to enable/disable the cursor
+ * @param x X position
+ * @param y Y position
+ */
 unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int y)
 {
    int i=0;
@@ -282,7 +288,19 @@ unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int 
    return p[5];
 }
 
-unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int format, void* buffer, int hotspotx, int hotspoty)
+/** Function that sets the HW cursor image, size and hotspots
+ *
+ * @param file_desc file descriptor of the mailbox driver
+ * @param width Width of cursor, max 64
+ * @param height Height of cursor, max 64
+ * @param format Not presently used
+ * @param Handle to Videocore memory buffer, as returned in VIDEOCORE_MEMORY_H.buffer in the mailbox_videocore_alloc call
+ * @param hotspotx X point in image that is the 'hotspot'
+ * @param hotspoty Y point in image that is the 'hotspot'
+ *
+ * @return ??
+ */
+unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int format, uint32_t buffer, int hotspotx, int hotspoty)
 {
    int i=0;
    unsigned int p[32];
@@ -295,7 +313,7 @@ unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int f
    p[i++] = width;
    p[i++] = height;
    p[i++] = format;
-   p[i++] = (int)buffer;           // ptr to VC memory buffer
+   p[i++] = buffer;           // ptr to VC memory buffer. Doesn't work in 64bit....
    p[i++] = hotspotx;
    p[i++] = hotspoty;
 
@@ -307,7 +325,12 @@ unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int f
 
 }
 
-unsigned get_version(int file_desc)
+/** Function that sets the HW cursor image, size and hotspots
+ *
+ * @param file_desc file descriptor of the mailbox driver
+ * @return The firmware version number (which is time of build)
+ */
+unsigned int mailbox_get_version(int file_desc)
 {
    int i=0;
    unsigned p[32];
@@ -327,7 +350,11 @@ unsigned get_version(int file_desc)
 }
 
 
-int mailbox_init()
+/** Function to initialise the mailbox system
+ *
+ * @return Returns a file descriptor for use in mailbox_* calls or 0 if failed
+ */
+int mailbox_init(void)
 {
    struct stat stat_buf;
    int fd;
@@ -351,7 +378,11 @@ int mailbox_init()
    return fd;
 }
 
-int mailbox_deinit(int fd)
+/** Function to close down the mailbox system and release resources
+ *
+ * @param fd File descriptor returned from the init call.
+ */
+void mailbox_deinit(int fd)
 {
    close(fd);
 

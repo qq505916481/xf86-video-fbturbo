@@ -43,10 +43,12 @@
 #include "raspi_mailbox.h"
 
 
-#define MIN_RASPI_VERSION_NUMBER 1000
+#define MIN_RASPI_VERSION_NUMBER 1390809622
 
 
-
+/* Show/Enable the cursor
+ *
+ */
 static void ShowCursor(ScrnInfoPtr pScrn)
 {
     raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
@@ -56,6 +58,9 @@ static void ShowCursor(ScrnInfoPtr pScrn)
     mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
 }
 
+/* Hide/Disable the cursor
+ *
+ */
 static void HideCursor(ScrnInfoPtr pScrn)
 {
    raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
@@ -65,6 +70,9 @@ static void HideCursor(ScrnInfoPtr pScrn)
    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
 }
 
+/* Set cursor position on display
+ *
+ */
 static void SetCursorPosition(ScrnInfoPtr pScrn, int x, int y)
 {
    raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
@@ -75,20 +83,24 @@ static void SetCursorPosition(ScrnInfoPtr pScrn, int x, int y)
    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
 }
 
+/* Set the cursor colours. Not used
+ * We only support the ARGB cursor on Raspi.
+ */
 static void SetCursorColors(ScrnInfoPtr pScrn, int bg, int fg)
 {
    // we only support the ARGB cursor on Raspi.
 }
 
+/* Load a cursor image. Not used
+ * We only support the ARGB cursor on Raspi.
+ */
 static void LoadCursorImage(ScrnInfoPtr pScrn, unsigned char *bits)
 {
-   // we only support the ARGB cursor on Raspi.
 }
 
-
-
-/* Called to turn on the ARGB HW cursor */
-
+/* Called to turn on the ARGB HW cursor
+ *
+ */
 static Bool UseHWCursorARGB(ScreenPtr pScreen, CursorPtr pCurs)
 {
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
@@ -111,7 +123,9 @@ static Bool UseHWCursorARGB(ScreenPtr pScreen, CursorPtr pCurs)
     return state->enabled ? TRUE : FALSE;
 }
 
-/* Load an ARGB8888 bitmap to the VC4 for use as cursor*/
+/* Load an ARGB8888 bitmap to the VC4 for use as cursor
+ *
+ */
 static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
 {
     raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
@@ -133,10 +147,13 @@ static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
 
     memcpy(state->transfer_buffer.user, pCurs->bits->argb, copy_size);
 
-    mailbox_set_cursor_info(state->mailbox_fd, state->width, state->height, state->format, (void*)state->transfer_buffer.buffer, state->hotspotx, state->hotspoty);
+    mailbox_set_cursor_info(state->mailbox_fd, state->width, state->height, state->format, state->transfer_buffer.buffer, state->hotspotx, state->hotspoty);
 }
 
 
+/* Initialise the Raspberry Pi HW cursor system
+ *
+ */
 raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
 {
     xf86CursorInfoPtr InfoPtr;
@@ -213,6 +230,9 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     return state;
 }
 
+/* Close down the Raspberry Pi cursor system and release any resources
+ *
+ */
 void raspberry_cursor_close(ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
@@ -221,7 +241,7 @@ void raspberry_cursor_close(ScreenPtr pScreen)
 
     if (state)
     {
-        // Get rid of cursor
+        // Get rid of cursor from display
         mailbox_set_cursor_position(state->mailbox_fd, 0, state->x, state->y);
 
         mailbox_videocore_free(state->mailbox_fd, state->transfer_buffer);
