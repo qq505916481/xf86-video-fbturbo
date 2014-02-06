@@ -36,6 +36,7 @@
 #include "xf86.h"
 #include "xf86Cursor.h"
 #include "cursorstr.h"
+#include "servermd.h"
 
 #include "sunxi_disp.h"
 #include "fbdev_priv.h"
@@ -44,6 +45,13 @@
 
 
 #define MIN_RASPI_VERSION_NUMBER 1390809622
+
+// This is horrible, but need to have these here because of X realizeCursor function
+// not passing in anything we can get our state from
+static int background_colour = 0;
+static int foreground_colour = 0x00ffffff;
+static int realised_width = MAX_ARGB_CURSOR_WIDTH;
+static int realised_height = MAX_ARGB_CURSOR_HEIGHT;
 
 
 /* Show/Enable the cursor
@@ -88,14 +96,101 @@ static void SetCursorPosition(ScrnInfoPtr pScrn, int x, int y)
  */
 static void SetCursorColors(ScrnInfoPtr pScrn, int bg, int fg)
 {
-   // we only support the ARGB cursor on Raspi.
+   raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
+
+   //   state->background_colour = bg;
+   //   state->foreground_colour = fg;
+   background_colour = bg;
+   foreground_colour = fg;
 }
 
-/* Load a cursor image. Not used
- * We only support the ARGB cursor on Raspi.
+/* Load a cursor image.
+ * Loads the supplied cursor bits to VC4
  */
 static void LoadCursorImage(ScrnInfoPtr pScrn, unsigned char *bits)
 {
+   raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
+   int size = realised_width * realised_height * 4;
+
+   memcpy(state->transfer_buffer.user, bits, size);
+
+   mailbox_set_cursor_info(state->mailbox_fd, realised_width, realised_height, 0, state->transfer_buffer.buffer, 0,0);
+}
+
+/* Called to generate a ARGB cursor from the X definition passed in
+ *
+ */
+static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
+{
+   char *mem;
+
+   int dst_size = (pCurs->bits->width * pCurs->bits->height) * 4; // 4 bpp;
+
+   mem = calloc(1, dst_size);
+
+   if (mem)
+   {
+      if (pCurs->bits->argb)
+      {
+         memcpy(mem, pCurs->bits->argb, dst_size);
+      }
+      else
+      {
+         int x,y,bit;
+         unsigned char *src = pCurs->bits->source;
+         unsigned char *mask =  pCurs->bits->mask;
+         unsigned char *current_src, *current_mask;
+
+         uint32_t *dst, pixel;
+
+         // Pitch may not be the width. This code from the X org file xf86HWCurs.c
+         // in the RealiseCursorInterleave0 function
+         int src_pitch = pCurs->bits->width + (BITMAP_SCANLINE_PAD -1) >> LOG2_BITMAP_PAD;
+
+         src_pitch = 4;
+
+         // total number of output pixels we need
+         int count = pCurs->bits->width * pCurs->bits->height;
+
+         dst = (uint32_t*)mem;
+
+         current_src = src;
+         current_mask = mask;
+
+         // For every scanline
+         for (y=0;y<pCurs->bits->height;y++)
+         {
+            // For each BYTE in scanline
+            for (x=0;x<pCurs->bits->width;x+=8)
+            {
+               // For each bit in the byte, @ 1bits per pixel
+               for (bit=7;bit>=0;bit-=1)
+               {
+                  pixel = ((*current_src >> bit) & 0x01) ? foreground_colour : background_colour;
+
+                  pixel |= ((*current_mask >> bit) & 0x01) ? 0xff000000 : 0;
+
+                  *dst++ = pixel;
+
+                  count--;
+               }
+
+               current_src++;
+               current_mask++;
+            }
+
+            src += src_pitch;
+            mask += src_pitch;
+            current_src = src;
+            current_mask = mask;
+         }
+      }
+
+      realised_height = pCurs->bits->height;
+      realised_width = pCurs->bits->width;
+   }
+
+   return mem;
 }
 
 /* Called to turn on the ARGB HW cursor
@@ -196,10 +291,12 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     InfoPtr->SetCursorPosition = SetCursorPosition;
     InfoPtr->SetCursorColors = SetCursorColors;
     InfoPtr->LoadCursorImage = LoadCursorImage;
+    InfoPtr->RealizeCursor = RealiseCursor;
 
     InfoPtr->MaxWidth = MAX_ARGB_CURSOR_WIDTH;
     InfoPtr->MaxHeight = MAX_ARGB_CURSOR_HEIGHT;
-    InfoPtr->Flags = HARDWARE_CURSOR_ARGB;
+    InfoPtr->Flags = HARDWARE_CURSOR_ARGB /*| HARDWARE_CURSOR_UPDATE_UNHIDDEN*/ | HARDWARE_CURSOR_SHOW_TRANSPARENT |
+                     HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_1;
 
     InfoPtr->UseHWCursorARGB = UseHWCursorARGB;
     InfoPtr->LoadCursorARGB = LoadCursorARGB;
