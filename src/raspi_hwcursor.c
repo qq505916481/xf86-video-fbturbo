@@ -128,6 +128,10 @@ static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
 
    mem = calloc(1, dst_size);
 
+   // Passed in colours are 16 bit device independent values. We want 8 bit in one uint32_t
+   foreground_colour = (pCurs->foreRed & 0xFF00) << 8 | (pCurs->foreGreen & 0xFF00) | (pCurs->foreBlue & 0xff00) >> 8;
+   background_colour = (pCurs->backRed & 0xFF00) << 8 | (pCurs->backGreen & 0xFF00) | (pCurs->backBlue & 0xff00) >> 8;
+
    if (mem)
    {
       if (pCurs->bits->argb)
@@ -143,36 +147,32 @@ static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
 
          uint32_t *dst, pixel;
 
-         // Pitch may not be the width. This code from the X org file xf86HWCurs.c
-         // in the RealiseCursorInterleave0 function
-         int src_pitch = pCurs->bits->width + (BITMAP_SCANLINE_PAD -1) >> LOG2_BITMAP_PAD;
-
-         src_pitch = 4;
-
-         // total number of output pixels we need
-         int count = pCurs->bits->width * pCurs->bits->height;
+         // Pitch may not be the width.
+         // Pad up to the BITMAP_SCANLINE_PAD to give pixels, then /8 to give bytes as we are
+         // 1bpp
+         int src_pitch = ( (pCurs->bits->width + (BITMAP_SCANLINE_PAD - 1)) & ~(BITMAP_SCANLINE_PAD - 1)) / 8;
 
          dst = (uint32_t*)mem;
 
-         current_src = src;
-         current_mask = mask;
+         // We might need to do this in WORDS - maybe the bitmap is big endian?
 
          // For every scanline
          for (y=0;y<pCurs->bits->height;y++)
          {
+            current_src = src;
+            current_mask = mask;
+
             // For each BYTE in scanline
             for (x=0;x<pCurs->bits->width;x+=8)
             {
                // For each bit in the byte, @ 1bits per pixel
-               for (bit=7;bit>=0;bit-=1)
+               for (bit=7;bit>=0;bit--)
                {
                   pixel = ((*current_src >> bit) & 0x01) ? foreground_colour : background_colour;
 
                   pixel |= ((*current_mask >> bit) & 0x01) ? 0xff000000 : 0;
 
                   *dst++ = pixel;
-
-                  count--;
                }
 
                current_src++;
@@ -181,8 +181,6 @@ static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
 
             src += src_pitch;
             mask += src_pitch;
-            current_src = src;
-            current_mask = mask;
          }
       }
 
