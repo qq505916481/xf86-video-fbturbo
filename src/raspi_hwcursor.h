@@ -38,6 +38,9 @@ typedef struct
    int hotspotx;
    int hotspoty;
 
+   uint32_t foreground_colour;
+   uint32_t background_colour;
+
    xf86CursorInfoPtr InfoPtr;
    int mailbox_fd;
 
