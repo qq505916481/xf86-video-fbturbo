@@ -91,21 +91,21 @@ static void SetCursorPosition(ScrnInfoPtr pScrn, int x, int y)
    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
 }
 
-/* Set the cursor colours. Not used
- * We only support the ARGB cursor on Raspi.
+/* Set the cursor colours.
  */
 static void SetCursorColors(ScrnInfoPtr pScrn, int bg, int fg)
 {
    raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
 
-   //   state->background_colour = bg;
-   //   state->foreground_colour = fg;
    background_colour = bg;
    foreground_colour = fg;
+
+   // Ought to regenerate the ARGB cursor here...but current version
+   // doesn't support this. Something for another day...
 }
 
 /* Load a cursor image.
- * Loads the supplied cursor bits to VC4
+ * Loads the supplied cursor bits to VC4.
  */
 static void LoadCursorImage(ScrnInfoPtr pScrn, unsigned char *bits)
 {
@@ -119,6 +119,8 @@ static void LoadCursorImage(ScrnInfoPtr pScrn, unsigned char *bits)
 
 /* Called to generate a ARGB cursor from the X definition passed in
  *
+ * Incoming data is 1bpp, with the rows padded to BITMAP_SCANLINE_PAD bits.
+ *
  */
 static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
 {
@@ -128,7 +130,7 @@ static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
 
    mem = calloc(1, dst_size);
 
-   // Passed in colours are 16 bit device independent values. We want 8 bit in one uint32_t
+   // Passed in colours are 16 bit device independent values. We want 8 bit components in one uint32_t
    foreground_colour = (pCurs->foreRed & 0xFF00) << 8 | (pCurs->foreGreen & 0xFF00) | (pCurs->foreBlue & 0xff00) >> 8;
    background_colour = (pCurs->backRed & 0xFF00) << 8 | (pCurs->backGreen & 0xFF00) | (pCurs->backBlue & 0xff00) >> 8;
 
@@ -141,20 +143,21 @@ static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
       else
       {
          int x,y,bit;
-         unsigned char *src = pCurs->bits->source;
-         unsigned char *mask =  pCurs->bits->mask;
-         unsigned char *current_src, *current_mask;
+         typedef uint8_t PIX_TYPE;
+         #define PIX_TYPE_SIZE (sizeof(PIX_TYPE) * 8)
+
+         PIX_TYPE  *src = (PIX_TYPE *)pCurs->bits->source;
+         PIX_TYPE  *mask =  (PIX_TYPE *)pCurs->bits->mask;
+         PIX_TYPE  *current_src, *current_mask;
 
          uint32_t *dst, pixel;
 
          // Pitch may not be the width.
-         // Pad up to the BITMAP_SCANLINE_PAD to give pixels, then /8 to give bytes as we are
-         // 1bpp
-         int src_pitch = ( (pCurs->bits->width + (BITMAP_SCANLINE_PAD - 1)) & ~(BITMAP_SCANLINE_PAD - 1)) / 8;
+         // Pad up to the BITMAP_SCANLINE_PAD to give pixels, then work out the number of PIX types in the width
+         // at 1bpp
+         int src_pitch = ( (pCurs->bits->width +(BITMAP_SCANLINE_PAD - 1)) & ~(BITMAP_SCANLINE_PAD - 1)) / PIX_TYPE_SIZE;
 
          dst = (uint32_t*)mem;
-
-         // We might need to do this in WORDS - maybe the bitmap is big endian?
 
          // For every scanline
          for (y=0;y<pCurs->bits->height;y++)
@@ -162,11 +165,11 @@ static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
             current_src = src;
             current_mask = mask;
 
-            // For each BYTE in scanline
-            for (x=0;x<pCurs->bits->width;x+=8)
+            // For each PIX in scanline
+            for (x=0;x<pCurs->bits->width;x+=PIX_TYPE_SIZE)
             {
-               // For each bit in the byte, @ 1bits per pixel
-               for (bit=7;bit>=0;bit--)
+               // For each bit in the incoming PIX, @ 1bits per pixel
+               for (bit=0;bit<PIX_TYPE_SIZE;bit++)
                {
                   pixel = ((*current_src >> bit) & 0x01) ? foreground_colour : background_colour;
 
@@ -228,9 +231,9 @@ static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
     state->height = pCurs->bits->height;
     state->format = 0;
 
-    // It appears that the hotspot is already compensated for by X, so we dont need to pass it on.
-    state->hotspotx = 0; // pCurs->bits->yhot;
-    state->hotspoty = 0; // pCurs->bits->yhot;
+    // It appears that the hotspot is already compensated for by X, so we dont need to pass it on to VC4.
+    state->hotspotx = 0;
+    state->hotspoty = 0;
 
     // Clear our transfer buffer up front
     memset(state->transfer_buffer.user, 0, state->transfer_buffer_size);
@@ -293,8 +296,7 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
 
     InfoPtr->MaxWidth = MAX_ARGB_CURSOR_WIDTH;
     InfoPtr->MaxHeight = MAX_ARGB_CURSOR_HEIGHT;
-    InfoPtr->Flags = HARDWARE_CURSOR_ARGB /*| HARDWARE_CURSOR_UPDATE_UNHIDDEN*/ | HARDWARE_CURSOR_SHOW_TRANSPARENT |
-                     HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_1;
+    InfoPtr->Flags = HARDWARE_CURSOR_ARGB | HARDWARE_CURSOR_UPDATE_UNHIDDEN ;
 
     InfoPtr->UseHWCursorARGB = UseHWCursorARGB;
     InfoPtr->LoadCursorARGB = LoadCursorARGB;
