@@ -47,6 +47,8 @@ typedef struct
    VIDEOCORE_MEMORY_H transfer_buffer;
    int transfer_buffer_size;
 
+   int realised_width;
+   int realised_height;
 } raspberry_cursor_state_s;
 
 #define MAX_ARGB_CURSOR_HEIGHT 64
