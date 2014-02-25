@@ -51,14 +51,11 @@
  */
 static void ShowCursor(ScrnInfoPtr pScrn)
 {
-   xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "in show cursor\n");
     raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
 
     state->enabled = 1;
 
     mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
-
-    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "out show cursor\n");
 }
 
 /* Hide/Disable the cursor
@@ -66,15 +63,11 @@ static void ShowCursor(ScrnInfoPtr pScrn)
  */
 static void HideCursor(ScrnInfoPtr pScrn)
 {
-   xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "in hide cursor\n");
-
    raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
 
    state->enabled = 0;
 
    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
-
-   xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "out hide cursor\n");
 }
 
 /* Set cursor position on display
@@ -82,15 +75,12 @@ static void HideCursor(ScrnInfoPtr pScrn)
  */
 static void SetCursorPosition(ScrnInfoPtr pScrn, int x, int y)
 {
-   xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "in set cursor position\n");
-
    raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
 
    state->x = x;
    state->y = y;
 
    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
-   xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "out set cursor position\n");
 }
 
 /* Set the cursor colours.
@@ -111,8 +101,6 @@ static void SetCursorColors(ScrnInfoPtr pScrn, int bg, int fg)
  */
 static void LoadCursorImage(ScrnInfoPtr pScrn, unsigned char *bits)
 {
-   xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "in LoadCursorImage\n");
-
    raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
    int size = state->realised_width * state->realised_height * 4;
 
@@ -120,9 +108,6 @@ static void LoadCursorImage(ScrnInfoPtr pScrn, unsigned char *bits)
 
    // Our cursor needs a minimum width/height of 16 each
    mailbox_set_cursor_info(state->mailbox_fd, state->realised_width, state->realised_height, 0, state->transfer_buffer.buffer, state->hotspotx, state->hotspotx);
-
-
-   xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "out LoadCursorImage\n");
 }
 
 /* Called to generate a ARGB cursor from the X definition passed in
@@ -139,9 +124,6 @@ static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
    int dest_height = pCurs->bits->height < 16 ? 16 : pCurs->bits->height;
    int dest_size = dest_width * dest_height * 4; // 4 bpp;
    int dest_pitch = dest_width; // this is in uint32_t's so no need pump up by bpp
-
-
-   xf86DrvMsg(info->pScrn->scrnIndex, X_CONFIG, "in realiseCursor\n");
 
    mem = calloc(1, dest_size);
 
@@ -206,12 +188,10 @@ static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
 
       state->realised_height = dest_height;
       state->realised_width = dest_width;
-      state->hotspoty = pCurs->bits->height;
+      state->hotspotx = 0;
+      state->hotspoty = 0; // pCurs->bits->height;
 
    }
-
-   xf86DrvMsg(info->pScrn->scrnIndex, X_CONFIG, "out realiseCursor, real h, w = %d, %d\n", state->realised_height, state->realised_width);
-
 
    return mem;
 }
@@ -224,8 +204,6 @@ static Bool UseHWCursorARGB(ScreenPtr pScreen, CursorPtr pCurs)
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
 
     raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
-
-    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "in HWCursorARGB\n");
 
     /* VC4 supports ARGB cursors up to 64x64 */
 
@@ -240,8 +218,6 @@ static Bool UseHWCursorARGB(ScreenPtr pScreen, CursorPtr pCurs)
 
     mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
 
-    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "out HWCursorARGB\n");
-
     return state->enabled ? TRUE : FALSE;
 }
 
@@ -252,8 +228,6 @@ static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
 {
     raspberry_cursor_state_s *state = RASPI_DISP_HWC(pScrn);
     int copy_size;
-
-    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "in LoadCursorARGB\n");
 
     state->width  = pCurs->bits->width;
     state->height = pCurs->bits->height;
@@ -272,9 +246,6 @@ static void LoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
     memcpy(state->transfer_buffer.user, pCurs->bits->argb, copy_size);
 
     mailbox_set_cursor_info(state->mailbox_fd, state->width, state->height, state->format, state->transfer_buffer.buffer, state->hotspotx, state->hotspoty);
-
-    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "out LoadCursorARGB\n");
-
 }
 
 
@@ -290,8 +261,6 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     unsigned int version;
     VIDEOCORE_MEMORY_H mem;
     int alloc_size;
-
-    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Entered\n");
 
     fd = mailbox_init();
 
@@ -358,9 +327,6 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     state->hotspotx = 0;
     state->hotspoty = 0;
 
-    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "out cursorinit\n");
-
-
     return state;
 }
 
@@ -382,8 +348,5 @@ void raspberry_cursor_close(ScreenPtr pScreen)
         xf86DestroyCursorInfoRec(state->InfoPtr);
         mailbox_deinit(state->mailbox_fd);
     }
-
-    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "out cursorclose\n");
-
 }
 
