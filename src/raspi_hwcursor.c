@@ -80,7 +80,7 @@ static void SetCursorPosition(ScrnInfoPtr pScrn, int x, int y)
    state->x = x;
    state->y = y;
 
-   mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
+   mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x + state->overscan_offset_x, state->y + state->overscan_offset_y);
 }
 
 /* Set the cursor colours.
@@ -260,7 +260,7 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
     unsigned int version;
     VIDEOCORE_MEMORY_H mem;
-    int alloc_size;
+    int alloc_size, dummy;
 
     fd = mailbox_init();
 
@@ -326,6 +326,11 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
 
     state->hotspotx = 0;
     state->hotspoty = 0;
+
+    // Now determine if we have any overscan settings we need to compensate for
+    mailbox_get_overscan(fd, &state->overscan_offset_y, &dummy, &state->overscan_offset_x, &dummy);
+
+    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Overscan settings detected : x offset = %d, y offset = %d\n", state->overscan_offset_x, state->overscan_offset_y);
 
     return state;
 }

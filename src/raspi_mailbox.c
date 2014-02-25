@@ -203,7 +203,7 @@ unsigned int mailbox_memory_lock(int file_desc, unsigned int handle)
 /** Lock a block of relocatable memory Videocore via mailbox call
  *
  * @param fd file descriptor of the mailbox driver
- * @param handle Handle to thememory block as returned by the alloc call
+ * @param handle Handle to the memory block as returned by the alloc call
  * @return ??? Dunno
  */
 unsigned int mailbox_memory_unlock(int file_desc, unsigned handle)
@@ -325,7 +325,7 @@ unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int f
 
 }
 
-/** Function that sets the HW cursor image, size and hotspots
+/** Function that gets the current VC version number
  *
  * @param file_desc file descriptor of the mailbox driver
  * @return The firmware version number (which is time of build)
@@ -348,6 +348,42 @@ unsigned int mailbox_get_version(int file_desc)
    set_mailbox_property(file_desc, p);
    return p[5];
 }
+
+/** Function that gets the current overscan settings
+ *
+ * @param file_desc file descriptor of the mailbox driver
+ * @param[out] top, bottom, left, right
+ * @return ??
+ */
+unsigned int mailbox_get_overscan(int file_desc, int *top, int *bottom, int *left, int *right)
+{
+   int i=0;
+   unsigned p[32];
+   p[i++] = 0; // size
+   p[i++] = 0x00000000; // process request
+
+   p[i++] = 0x0004000a; // get firmware version
+   p[i++] = 0x00000010; // buffer size
+   p[i++] = 0x00000000; // request size
+
+   p[i++] = 0x00000000; // top
+   p[i++] = 0x00000000; // bottom
+   p[i++] = 0x00000000; // left
+   p[i++] = 0x00000000; // right
+
+   p[i++] = 0x00000000; // end tag
+   p[0] = i*sizeof *p; // actual size
+
+   set_mailbox_property(file_desc, p);
+
+   *top    = p[5];
+   *bottom = p[6];
+   *left   = p[7];
+   *right  = p[8];
+
+   return p[5];
+}
+
 
 
 /** Function to initialise the mailbox system

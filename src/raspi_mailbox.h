@@ -49,6 +49,7 @@ unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int 
 unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int format, uint32_t buffer, int hotspotx, int hotspoty);
 
 unsigned int mailbox_get_version(int file_desc);
+unsigned int mailbox_get_overscan(int file_desc, int *top, int *bottom, int *left, int *right);
 
 
 #endif /* RASPI_MEMORY_H_ */
