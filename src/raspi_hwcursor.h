@@ -37,8 +37,6 @@ typedef struct
    int format; // Not used
    int hotspotx;
    int hotspoty;
-   int overscan_offset_x;
-   int overscan_offset_y;
 
    uint32_t foreground_colour;
    uint32_t background_colour;

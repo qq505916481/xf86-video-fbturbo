@@ -266,8 +266,9 @@ void mailbox_videocore_free(int file_desc, VIDEOCORE_MEMORY_H mem)
  * @param enabled Flag to enable/disable the cursor
  * @param x X position
  * @param y Y position
+ * @param flag Bitfield. Bit 0 : 0 = display coords 1 = framebuffer coords.
  */
-unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int y)
+unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int y, int flag)
 {
    int i=0;
    unsigned p[32];
@@ -280,6 +281,7 @@ unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int 
    p[i++] = enabled;
    p[i++] = x;
    p[i++] = y;
+   p[i++] = flag;
 
    p[i++] = 0x00000000; // end tag
    p[0] = i*sizeof *p; // actual size

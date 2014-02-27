@@ -45,7 +45,7 @@ unsigned int mailbox_memory_unlock(int file_desc, unsigned int handle);
 VIDEOCORE_MEMORY_H mailbox_videocore_alloc(int file_desc, int size);
 void mailbox_videocore_free(int file_desc, VIDEOCORE_MEMORY_H mem);
 
-unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int y);
+unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int y, int flag);
 unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int format, uint32_t buffer, int hotspotx, int hotspoty);
 
 unsigned int mailbox_get_version(int file_desc);

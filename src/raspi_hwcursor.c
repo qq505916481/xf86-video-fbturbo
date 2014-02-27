@@ -55,7 +55,7 @@ static void ShowCursor(ScrnInfoPtr pScrn)
 
     state->enabled = 1;
 
-    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
+    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y, 1);
 }
 
 /* Hide/Disable the cursor
@@ -67,7 +67,7 @@ static void HideCursor(ScrnInfoPtr pScrn)
 
    state->enabled = 0;
 
-   mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
+   mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y, 1);
 }
 
 /* Set cursor position on display
@@ -80,7 +80,7 @@ static void SetCursorPosition(ScrnInfoPtr pScrn, int x, int y)
    state->x = x;
    state->y = y;
 
-   mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x + state->overscan_offset_x, state->y + state->overscan_offset_y);
+   mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y, 1);
 }
 
 /* Set the cursor colours.
@@ -216,7 +216,7 @@ static Bool UseHWCursorARGB(ScreenPtr pScreen, CursorPtr pCurs)
          state->enabled = 0;
     }
 
-    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y);
+    mailbox_set_cursor_position(state->mailbox_fd, state->enabled, state->x, state->y, 1);
 
     return state->enabled ? TRUE : FALSE;
 }
@@ -327,10 +327,7 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     state->hotspotx = 0;
     state->hotspoty = 0;
 
-    // Now determine if we have any overscan settings we need to compensate for
-    mailbox_get_overscan(fd, &state->overscan_offset_y, &dummy, &state->overscan_offset_x, &dummy);
-
-    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Overscan settings detected : x offset = %d, y offset = %d\n", state->overscan_offset_x, state->overscan_offset_y);
+    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Complete\n");
 
     return state;
 }
@@ -347,7 +344,7 @@ void raspberry_cursor_close(ScreenPtr pScreen)
     if (state)
     {
         // Get rid of cursor from display
-        mailbox_set_cursor_position(state->mailbox_fd, 0, state->x, state->y);
+        mailbox_set_cursor_position(state->mailbox_fd, 0, state->x, state->y, 1);
 
         mailbox_videocore_free(state->mailbox_fd, state->transfer_buffer);
         xf86DestroyCursorInfoRec(state->InfoPtr);
