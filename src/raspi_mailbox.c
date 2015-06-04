@@ -31,15 +31,24 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <dlfcn.h>
 
 #include "raspi_mailbox.h"
+
+// Might be a define for this somewhere in the raspi userland headers somewhere?
+// ARM cannot see VC4 L2 on Pi 2
+#define MEMORY_ALLOCATE_FLAG_P1 0x0c
+#define MEMORY_ALLOCATE_FLAG_P2 0x04
 
 // Use a page size of 4k
 static const int page_size = 4*1024;
 static const int alignment = 4*1024;
 
-// Might be a define for this somewhere in the raspi userland headers somewhere?
-#define MEMORY_ALLOCATE_FLAG 0x0c
+// We will change the alloc flag depending on Pi1 or Pi2
+static int memory_alloc_flag = MEMORY_ALLOCATE_FLAG_P1;
+
+// Macro to convert a bus to a physical address
+#define BUS_TO_PHYS(x) ((x)&~0xC0000000)
 
 // device parameters
 #define MAILBOX_DEVICE_FILENAME "/dev/vc4mail"
@@ -230,7 +239,7 @@ unsigned int mailbox_memory_unlock(int file_desc, unsigned handle)
  * allocation function
  *
  * @param fd file descriptor of the mailbox driver
- * @param size AMount of memory to allocate
+ * @param size Amount of memory to allocate
  * @return A structure containing the allocation details.
  */
 VIDEOCORE_MEMORY_H mailbox_videocore_alloc(int fd, int size)
@@ -238,9 +247,9 @@ VIDEOCORE_MEMORY_H mailbox_videocore_alloc(int fd, int size)
    VIDEOCORE_MEMORY_H mem;
 
    // allocate memory on GPU, map it ready for use
-   mem.handle = mailbox_memory_alloc(fd, size, alignment, MEMORY_ALLOCATE_FLAG);
+   mem.handle = mailbox_memory_alloc(fd, size, alignment, memory_alloc_flag);
    mem.buffer = mailbox_memory_lock(fd, mem.handle);
-   mem.user = map_memory(mem.buffer, size);
+   mem.user = map_memory(BUS_TO_PHYS(mem.buffer), size);
    mem.size = size;
 
    return mem;
@@ -396,6 +405,8 @@ int mailbox_init(void)
 {
    struct stat stat_buf;
    int fd;
+   void *handle;
+   unsigned (*bcm_host_get_sdram_address)(void);
 
    // See if we have a device node, if not create one.
    if (stat(MAILBOX_DEVICE_FILENAME, &stat_buf) == -1)
@@ -412,6 +423,23 @@ int mailbox_init(void)
    {
       return 0;
    }
+
+   // Find out if we are a Pi1 or a Pi2.
+
+   // Pi 1 defaults
+
+   handle = dlopen("libbcm_host.so", RTLD_LAZY);
+   if (!handle) return -1;
+
+   *(void **) (&bcm_host_get_sdram_address) = dlsym(handle, "bcm_host_get_sdram_address");
+
+   if (bcm_host_get_sdram_address && bcm_host_get_sdram_address()!=0x40000000)
+   {
+      // Pi 2
+      memory_alloc_flag = MEMORY_ALLOCATE_FLAG_P2;
+   }
+
+   dlclose(handle);
 
    return fd;
 }
