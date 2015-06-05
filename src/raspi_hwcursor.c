@@ -125,6 +125,11 @@ static unsigned char* RealiseCursor(xf86CursorInfoPtr info, CursorPtr pCurs)
     // Round up our width/height to 16 as minimum requirements for VC cursor
     int dest_width = pCurs->bits->width < 16 ? 16 : pCurs->bits->width;
     int dest_height = pCurs->bits->height < 16 ? 16 : pCurs->bits->height;
+
+    // Also round up to an even number, I suspect the VC HW cursor dispmanx code requires this also.
+    dest_width = (dest_width + 1) & ~1;
+    dest_height = (dest_height + 1) & ~1;
+
     int dest_size = dest_width * dest_height * 4; // 4 bpp;
     int dest_pitch = dest_width; // this is in uint32_t's so no need pump up by bpp
 
