@@ -282,12 +282,12 @@ static Bool FBDevPciProbe(DriverPtr drv, int entity_num,
     pScrn = xf86ConfigPciEntity(NULL, 0, entity_num, NULL, NULL,
 				NULL, NULL, NULL, NULL);
     if (pScrn) {
-	char *device;
+	const char *device;
 	GDevPtr devSection = xf86GetDevFromEntity(pScrn->entityList[0],
 						  pScrn->entityInstanceList[0]);
 
 	device = xf86FindOptionValue(devSection->options, "fbdev");
-	if (fbdevHWProbe(NULL, device, NULL)) {
+	if (fbdevHWProbe(NULL, (char*)device, NULL)) {
 	    pScrn->driverVersion = FBDEV_VERSION;
 	    pScrn->driverName    = FBDEV_DRIVER_NAME;
 	    pScrn->name          = FBDEV_NAME;
@@ -326,7 +326,7 @@ FBDevProbe(DriverPtr drv, int flags)
 #ifndef XSERVER_LIBPCIACCESS
 	int bus,device,func;
 #endif
-	char *dev;
+	const char *dev;
 	Bool foundScreen = FALSE;
 
 	TRACE("probe start");
@@ -363,7 +363,7 @@ FBDevProbe(DriverPtr drv, int flags)
 		    0;
 		  
 	    }
-	    if (fbdevHWProbe(NULL,dev,NULL)) {
+	    if (fbdevHWProbe(NULL,(char*)dev,NULL)) {
 		pScrn = NULL;
 		if (isPci) {
 #ifndef XSERVER_LIBPCIACCESS
@@ -464,7 +464,7 @@ FBDevPreInit(ScrnInfoPtr pScrn, int flags)
 	}
 #endif
 	/* open device */
-	if (!fbdevHWInit(pScrn,NULL,xf86FindOptionValue(fPtr->pEnt->device->options,"fbdev")))
+	if (!fbdevHWInit(pScrn,NULL,(char*)xf86FindOptionValue(fPtr->pEnt->device->options,"fbdev")))
 		return FALSE;
 	default_depth = fbdevHWGetDepth(pScrn,&fbbpp);
 	if (!xf86SetDepthBpp(pScrn, default_depth, default_depth, fbbpp,
