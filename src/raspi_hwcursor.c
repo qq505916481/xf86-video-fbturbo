@@ -284,7 +284,7 @@ raspberry_cursor_state_s *raspberry_cursor_init(ScreenPtr pScreen)
     // Get the firmware number to ensure we have cursor support.
     version = mailbox_get_version(fd);
 
-    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Detected firmware version %d)\n", version);
+    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "raspberry_cursor_init: Detected firmware version %d\n", version);
 
     if ( version < MIN_RASPI_VERSION_NUMBER)
     {

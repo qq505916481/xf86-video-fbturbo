@@ -36,22 +36,23 @@
 #include "raspi_mailbox.h"
 
 // Might be a define for this somewhere in the raspi userland headers somewhere?
-// ARM cannot see VC4 L2 on Pi 2
-#define MEMORY_ALLOCATE_FLAG_P1 0x0c
-#define MEMORY_ALLOCATE_FLAG_P2 0x04
+// ARM can see VC4 L2 only on Pi 1
+#define MEMORY_ALLOCATE_FLAG_L2 0x0c        // MEM_FLAG_L1_NONALLOCATING = (MEM_FLAG_DIRECT | MEM_FLAG_COHERENT) ... allocating in VC4 L2
+#define MEMORY_ALLOCATE_FLAG_NON_L2 0x04    // MEM_FLAG_DIRECT
 
 // Use a page size of 4k
 static const int page_size = 4*1024;
 static const int alignment = 4*1024;
 
-// We will change the alloc flag depending on Pi1 or Pi2
-static int memory_alloc_flag = MEMORY_ALLOCATE_FLAG_P1;
+// We will change the alloc flag depending on Pi1 or Pi2/Pi3
+static int memory_alloc_flag = MEMORY_ALLOCATE_FLAG_L2;
 
 // Macro to convert a bus to a physical address
 #define BUS_TO_PHYS(x) ((x)&~0xC0000000)
 
 // device parameters
-#define MAILBOX_DEVICE_FILENAME "/dev/vc4mail"
+#define OLD_MAILBOX_DEVICE_FILENAME "/dev/vc4mail"
+#define MAILBOX_DEVICE_FILENAME "/dev/vcio"
 #define MAJOR 100
 #define MINOR 0
 #define IOCTL_MBOX_PROPERTY   _IOWR(MAJOR, MINOR, char *)
@@ -127,6 +128,21 @@ static void *unmap_memory(void *addr, unsigned int size)
    return NULL;
 }
 
+void create_mailbox_request(unsigned int p[], unsigned int tag_id, unsigned int num_req_data, unsigned int num_res_data) {
+   unsigned int i = 0;
+   unsigned int num_fill = num_res_data > num_req_data ? num_res_data : num_req_data;
+   p[i++] = 0;       // size. Filled in below
+   p[i++] = 0x00000000;
+   p[i++] = tag_id;
+   p[i++] = num_res_data << 2;
+   p[i++] = num_req_data << 2;
+   for (unsigned int j = 0; j < num_fill; j++) {
+     p[i++] = 0x00000000;
+   }
+   p[i++] = 0x00000000; // end tag
+   p[0] = i*sizeof(*p); // actual size
+}
+
 /** Alloc a block of relocatable memory on the Videocore via mailbox call
  *
  * @param fd file descriptor of the mailbox driver
@@ -137,20 +153,14 @@ static void *unmap_memory(void *addr, unsigned int size)
  */
 unsigned int mailbox_memory_alloc(int fd, unsigned int size, unsigned int align, unsigned int flags)
 {
-   int i=0;
    unsigned int p[32];
-   p[i++] = 0;       // size. Filled in below
-   p[i++] = 0x00000000;
 
-   p[i++] = 0x3000c; // (the tag id)
-   p[i++] = 12;      // (size of the buffer)
-   p[i++] = 12;      // (size of the data)
+   // Against the documentation, buffer size must be greater than 4 bytes
+   create_mailbox_request(p, 0x0003000c, 3, 3);
+   int i = 5;
    p[i++] = size;    // (num bytes? or pages?)
    p[i++] = align;   //
-   p[i++] = flags;   // (MEM_FLAG_L1_NONALLOCATING)
-
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof(*p); // actual size
+   p[i++] = flags;   // (MEMORY_ALLOCATE_FLAG)
 
    set_mailbox_property(fd, p);
 
@@ -165,18 +175,10 @@ unsigned int mailbox_memory_alloc(int fd, unsigned int size, unsigned int align,
  */
 unsigned int mailbox_memory_free(int file_desc, unsigned int handle)
 {
-   int i=0;
    unsigned int p[32];
-   p[i++] = 0;
-   p[i++] = 0x00000000;
-
-   p[i++] = 0x3000f;
-   p[i++] = 4;
-   p[i++] = 4;
+   create_mailbox_request(p, 0x0003000f, 1, 1);
+   int i = 5;
    p[i++] = handle;
-
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof(*p); // actual size
 
    set_mailbox_property(file_desc, p);
 
@@ -191,18 +193,10 @@ unsigned int mailbox_memory_free(int file_desc, unsigned int handle)
  */
 unsigned int mailbox_memory_lock(int file_desc, unsigned int handle)
 {
-   int i=0;
    unsigned int p[32];
-   p[i++] = 0;
-   p[i++] = 0x00000000;
-
-   p[i++] = 0x3000d;
-   p[i++] = 4;
-   p[i++] = 4;
+   create_mailbox_request(p, 0x0003000d, 1, 1);
+   int i = 5;
    p[i++] = handle;
-
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof(*p); // actual size
 
    set_mailbox_property(file_desc, p);
 
@@ -217,18 +211,10 @@ unsigned int mailbox_memory_lock(int file_desc, unsigned int handle)
  */
 unsigned int mailbox_memory_unlock(int file_desc, unsigned handle)
 {
-   int i=0;
    unsigned int p[32];
-   p[i++] = 0;
-   p[i++] = 0x00000000;
-
-   p[i++] = 0x3000e;
-   p[i++] = 4;
-   p[i++] = 4;
+   create_mailbox_request(p, 0x0003000e, 1, 1);
+   int i = 5;
    p[i++] = handle;
-
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof(*p); // actual size
 
    set_mailbox_property(file_desc, p);
 
@@ -279,21 +265,13 @@ void mailbox_videocore_free(int file_desc, VIDEOCORE_MEMORY_H mem)
  */
 unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int y, int flag)
 {
-   int i=0;
-   unsigned p[32];
-   p[i++] = 0; // size
-   p[i++] = 0x00000000; // process request
-   p[i++] = 0x00008011; // set cursor state
-   p[i++] = 12; // buffer size
-   p[i++] = 12; // data size
-
+   unsigned int p[32];
+   create_mailbox_request(p, 0x00008011, 4, 1);
+   int i = 5;
    p[i++] = enabled;
    p[i++] = x;
    p[i++] = y;
    p[i++] = flag;
-
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof *p; // actual size
 
    set_mailbox_property(file_desc, p);
    return p[5];
@@ -313,14 +291,9 @@ unsigned int mailbox_set_cursor_position(int file_desc, int enabled, int x, int 
  */
 unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int format, uint32_t buffer, int hotspotx, int hotspoty)
 {
-   int i=0;
    unsigned int p[32];
-   p[i++] = 0; // size
-   p[i++] = 0x00000000; // process request
-   p[i++] = 0x00008010; // set cursor state
-   p[i++] = 24; // buffer size
-   p[i++] = 24; // data size
-
+   create_mailbox_request(p, 0x00008010, 6, 1);
+   int i = 5;
    p[i++] = width;
    p[i++] = height;
    p[i++] = format;
@@ -328,12 +301,8 @@ unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int f
    p[i++] = hotspotx;
    p[i++] = hotspoty;
 
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof(*p); // actual size
-
    set_mailbox_property( file_desc, p);
    return p[5];
-
 }
 
 /** Function that gets the current VC version number
@@ -343,18 +312,8 @@ unsigned int mailbox_set_cursor_info(int file_desc, int width, int height, int f
  */
 unsigned int mailbox_get_version(int file_desc)
 {
-   int i=0;
-   unsigned p[32];
-   p[i++] = 0; // size
-   p[i++] = 0x00000000; // process request
-
-   p[i++] = 0x00000001; // get firmware version
-   p[i++] = 0x00000004; // buffer size
-   p[i++] = 0x00000000; // request size
-   p[i++] = 0x00000000; // value buffer
-
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof *p; // actual size
+   unsigned int p[32];
+   create_mailbox_request(p, 0x00000001, 0, 1);
 
    set_mailbox_property(file_desc, p);
    return p[5];
@@ -368,22 +327,8 @@ unsigned int mailbox_get_version(int file_desc)
  */
 unsigned int mailbox_get_overscan(int file_desc, int *top, int *bottom, int *left, int *right)
 {
-   int i=0;
-   unsigned p[32];
-   p[i++] = 0; // size
-   p[i++] = 0x00000000; // process request
-
-   p[i++] = 0x0004000a; // get firmware version
-   p[i++] = 0x00000010; // buffer size
-   p[i++] = 0x00000000; // request size
-
-   p[i++] = 0x00000000; // top
-   p[i++] = 0x00000000; // bottom
-   p[i++] = 0x00000000; // left
-   p[i++] = 0x00000000; // right
-
-   p[i++] = 0x00000000; // end tag
-   p[0] = i*sizeof *p; // actual size
+   unsigned int p[32];
+   create_mailbox_request(p, 0x0004000a, 0, 4);
 
    set_mailbox_property(file_desc, p);
 
@@ -408,23 +353,27 @@ int mailbox_init(void)
    void *handle;
    unsigned (*bcm_host_get_sdram_address)(void);
 
-   // See if we have a device node, if not create one.
-   if (stat(MAILBOX_DEVICE_FILENAME, &stat_buf) == -1)
-   {
-      // No node so attempt to create one.
-      // Character device, readable by all
-      if (mknod(MAILBOX_DEVICE_FILENAME, S_IFCHR | S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH, makedev(MAJOR, MINOR)) == -1)
-         return 0;
+   // use /dev/vcio if available (kernel >= 4.1)
+   if (stat(MAILBOX_DEVICE_FILENAME, &stat_buf) != -1) {
+     fd = open(MAILBOX_DEVICE_FILENAME, 0);
+   } else {
+      // See if we have a device node, if not create one.
+      if (stat(OLD_MAILBOX_DEVICE_FILENAME, &stat_buf) == -1) {
+        // No node so attempt to create one.
+        // Character device, readable by all
+        if (mknod(OLD_MAILBOX_DEVICE_FILENAME, S_IFCHR | S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH, makedev(MAJOR, MINOR)) == -1)
+           return 0;
+      }
+      fd = open(OLD_MAILBOX_DEVICE_FILENAME, 0);
    }
 
    // First check to see if we have the mailbox char device
-   fd = open(MAILBOX_DEVICE_FILENAME, 0);
    if (fd < 0)
    {
       return 0;
    }
 
-   // Find out if we are a Pi1 or a Pi2.
+   // Find out if we are a Pi1 or a Pi2/Pi3.
 
    // Pi 1 defaults
 
@@ -435,8 +384,8 @@ int mailbox_init(void)
 
    if (bcm_host_get_sdram_address && bcm_host_get_sdram_address()!=0x40000000)
    {
-      // Pi 2
-      memory_alloc_flag = MEMORY_ALLOCATE_FLAG_P2;
+      // Pi 2 and Pi 3
+      memory_alloc_flag = MEMORY_ALLOCATE_FLAG_NON_L2;
    }
 
    dlclose(handle);
